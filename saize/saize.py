@@ -1,15 +1,16 @@
 import cv2
 import datetime
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sobel_def
 
 
 # imgA = cv2.imread('diff_3_1.png')
 # imgB = cv2.imread('diff_3_2.png')
 
-imgA = cv2.imread(r'img3.png')
-imgB = cv2.imread(r'img4.png')
+imgA = cv2.imread('img/image3.png', 0)
+imgB = cv2.imread('img/image4.png', 0)
 
 
 
@@ -23,10 +24,10 @@ if imgB is None:
     print("error2")
     exit(0)
 
-if imgA.shape[2] == 4:
-    imgA = cv2.cvtColor(imgA, cv.COLOR_RGBA2RGB)
-if imgB.shape[2] == 4:  # imgB が RGBA 形式の場合
-    imgB = cv.cvtColor(imgB, cv.COLOR_RGBA2RGB)
+# if imgA.shape[2] == 4:
+#     imgA = cv2.cvtColor(imgA, cv.COLOR_RGBA2RGB)
+# if imgB.shape[2] == 4:  # imgB が RGBA 形式の場合
+#     imgB = cv.cvtColor(imgB, cv.COLOR_RGBA2RGB)
 
 imgA = cv2.cvtColor(imgA, cv2.COLOR_BGR2RGB)
 imgB = cv2.cvtColor(imgB, cv2.COLOR_BGR2RGB)
@@ -36,6 +37,8 @@ heightB, widthB, cB = imgB.shape[:3]
 
 akaze = cv2.AKAZE_create()
 
+#特徴量を計算する
+#kp = keypoints(特徴点),des = descriptors(特徴点描画)
 kpA, desA = akaze.detectAndCompute(imgA, None)
 kpB, desB = akaze.detectAndCompute(imgB, None)
 
@@ -72,4 +75,7 @@ result_bin = cv2.morphologyEx(result_bin, cv2.MORPH_OPEN, kernel) # オープニ
 result_bin_rgb = cv2.cvtColor(result_bin, cv2.COLOR_GRAY2RGB)
 result_add = cv2.addWeighted(imgA, 0.3, result_bin_rgb, 0.7, 2.2) # ２.２はガンマ値。大きくすると白っぽくなる
 
-cv2.imwrite('saize.jpg', result_add)
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+output_filename = f'output/saize_site_diff_{timestamp}.png'
+cv2.imwrite(output_filename, result_add)

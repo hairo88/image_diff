@@ -4,7 +4,7 @@ import datetime
 from sobel_def import sobel_image
 from canny import canny_image
 import matplotlib.pyplot as plt
-from utlis.show_2_image import show_2Img
+from utlis.show_image import show_2Img, show_1Img
 
 # 画像を読み込む
 image1 = cv2.imread(r'img/image3.png')
@@ -35,21 +35,20 @@ gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 filtered_image1 = cv2.bilateralFilter(gray1, 9, 75, 75)
 filtered_image2 = cv2.bilateralFilter(gray2, 9, 75, 75)
 
-#画像を表示する
-# show_2Img(filtered_image1, filtered_image2 , 'filetered iamge')
-
-#二値化
-ret_1, image1_binary = cv2.threshold(filtered_image1, 50, 255, cv2.THRESH_BINARY)
-ret_2, image2_binary = cv2.threshold(filtered_image2, 50, 255, cv2.THRESH_BINARY)
-
-# 二値化した画像を表示
-show_2Img(image1_binary, image2_binary, 'binary')
-
 # そのほかのエッジ検出
-img_contour_only_1 = sobel_image(filtered_image1)
-img_contour_only_2 = sobel_image(filtered_image2)
+# ラプラシアンフィルタ
+img_contour_only_1 = cv2.Laplacian(filtered_image1, cv2.CV_8U, ksize=5)
+img_contour_only_2 = cv2.Laplacian(filtered_image2, cv2.CV_8U, ksize=5)
 
-# findcontoursでエッジを検出した画像を表示
+# モルフォロジー演算
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+
+kernel_2 = np.ones((5, 5), np.uint8)
+
+morpho_image1 = cv2.morphologyEx(img_contour_only_1, cv2.MORPH_OPEN, kernel)
+morpho_image2 = cv2.morphologyEx(img_contour_only_2, cv2.MORPH_OPEN, kernel)
+
+# 画像を表示
 show_2Img(img_contour_only_1, img_contour_only_2, 'find contours')
 
 # akaze検出器
@@ -82,26 +81,57 @@ image2_transform = cv2.warpPerspective(img_contour_only_2, M, (w_min, h_min))
 # マッチを描画
 matched_image = cv2.drawMatches(img_contour_only_1, keypoints1, image2_transform, keypoints2, matches, None, flags=2)
 
+# 画像を小さな領域に分割して比較するための処理
+block_size = 100  # 小さな領域のサイズ
+
+# 差分を格納する画像を作成する
+difference = np.zeros_like(img_contour_only_1)
+
+# 小領域ごとに差分を求める
+for y in range(0, h_min, block_size):
+    for x in range(0, w_min, block_size):
+        # ブロックのサイズを調整
+        block_h = min(block_size, h_min - y)
+        block_w = min(block_size, w_min - x)
+
+        block1 = img_contour_only_1[y:y+block_h, x:x+block_w]
+        block2 = image2_transform[y:y+block_h, x:x+block_w]
+
+        # 差分計算
+        difference_block = cv2.absdiff(block1, block2)
+
+        kernel = np.ones((5, 5), np.uint8)
+        difference_block = cv2.morphologyEx(difference_block, cv2.MORPH_OPEN, kernel)
+
+
+        # 差分を格納
+        difference[y:y+block_h, x:x+block_w] = difference_block
+
+
 cv2.imshow('image', matched_image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 # マッチした画像を保存
 # 画像を保存する場所を変更する
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-output_1 = f'output/akaze_matched_keypoints{timestamp}.png'
-cv2.imwrite(output_1, matched_image)
+# timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+# output_1 = f'output/akaze_matched_keypoints{timestamp}.png'
+# cv2.imwrite(output_1, matched_image)
 
 # 2つの画像の差分を求める
 difference = cv2.absdiff(img_contour_only_1, image2_transform)
 
-# 差分情報をもとの画像に表示
-add_image = cv2.add(image1, difference)
+show_2Img(img_contour_only_1, image2_transform, 'diff')
 
-# 違いを強調して表示する
-cv2.imshow('image', add_image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+show_1Img(difference)
+
+# 差分情報をもとの画像に表示
+# add_image = cv2.add(image1, difference)
+
+# # 違いを強調して表示する
+# cv2.imshow('image', add_image)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
 
 # 差分を強調するために閾値処理を行う
 # _, thresh = cv2.threshold(difference, 30, 255, cv2.THRESH_BINARY)

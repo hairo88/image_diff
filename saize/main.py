@@ -55,7 +55,6 @@ show_2Img(img_contour_only_1, img_contour_only_2, 'conttour')
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
 kernel_2 = np.ones((5,5), np.uint8)
-image1_mor = cv2.erode(img_contour_only_1, kernel_2, iterations =3)
 
 image1_mor = cv2.morphologyEx(img_contour_only_1, cv2.MORPH_OPEN, kernel)
 image2_mor = cv2.morphologyEx(img_contour_only_2, cv2.MORPH_OPEN, kernel)

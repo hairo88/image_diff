@@ -61,35 +61,54 @@ if len(good) > MIN_MATCH_COUNT:
     image2_aligned = cv2.warpPerspective(gray2_clahe, M, (w, h))
 
     # ノイズ除去
-    image2_aligned = cv2.GaussianBlur(image2_aligned, (5, 5), 0)
+    # image2_aligned = cv2.GaussianBlur(image2_aligned, (5, 5), 0)
 
     # 差分計算
-    block_size = 50
+    block_size = 300
     difference = np.zeros_like(gray1)
-    difference_without_morph = np.zeros_like(gray1)
     for y in range(0, h, block_size):
         for x in range(0, w, block_size):
             block_h = min(block_size, h - y)
             block_w = min(block_size, w - x)
             block1 = gray1_clahe[y:y + block_h, x:x + block_w]
-            block2 = image2_aligned[y:y + block_h, x:x + block_w]
 
-            # 差分
-            difference_block = cv2.absdiff(block1, block2)
-            difference_without_morph[y:y + block_h, x:x + block_w] = difference_block
+            # --- image2_alignedをimage1に対応する部分に変換して差分を計算 ---
+            # AKAZEで特徴量検出
+            kp1_block, des1_block = akaze.detectAndCompute(block1, None)
+            kp2, des2 = akaze.detectAndCompute(image2_aligned, None)
 
-            # モルフォロジー演算
-            kernel = np.ones((5, 5), np.uint8)
-            diff_block_erode = cv2.erode(difference_block, kernel, iterations=1)
-            diff_block_dilate = cv2.dilate(diff_block_erode, kernel, iterations=1)
+            # マッチング (ここではBrute-Force Matcherを使用)
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            if des1_block is not None and des2 is not None:
+                matches_block = bf.match(des1_block, des2)
 
-            difference[y:y + block_h, x:x + block_w] = diff_block_dilate
+                # マッチング結果からimage2_alignedに対応する部分を切り出す
+                if matches_block:
+                    # マッチング点の座標を取得
+                    src_pts_block = np.float32([kp1_block[m.queryIdx].pt for m in matches_block]).reshape(-1, 1, 2)
+                    dst_pts_block = np.float32([kp2[m.trainIdx].pt for m in matches_block]).reshape(-1, 1, 2)
 
-    # モルフォロジー処理をしない差分画像を保存
-    cv2.imwrite('difference_without_morph.png', difference_without_morph)
+                    # 変換行列を計算
+                    M_block, _ = cv2.findHomography(dst_pts_block, src_pts_block, cv2.RANSAC, 5.0)
 
-    # モルフォロジー処理後の差分画像を保存
-    cv2.imwrite('difference_with_morph.png', difference)
+                    # image2_alignedをimage1に対応する部分に変換
+                    block2_warped = cv2.warpPerspective(image2_aligned, M_block, (block_w, block_h))
+
+                    # block1と変換後の画像の差分を計算
+                    block_difference = cv2.absdiff(block1, block2_warped)
+
+                    # 差分をdifferenceに保存
+                    difference[y:y + block_h, x:x + block_w] = block_difference
+
+                    # 差分画像を表示 (オプション)
+                    # plt.imshow(block_difference, cmap='gray')
+                    # plt.show()
+
+            # --- 差分計算ここまで ---
+
+
+    # モルフォロジー処理後の差分画像を保存 (difference_with_morph.png は不要になったため削除)
+    cv2.imwrite('difference.png', difference)
 
     # しきい値処理で差分の強調
     _, thresh = cv2.threshold(difference, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -103,7 +122,7 @@ if len(good) > MIN_MATCH_COUNT:
 
     # 元画像に間違い部分を赤色で塗りつぶし
     image1_with_diff = image1.copy()
-    cv2.drawContours(image1_with_diff, contours, -1, (0, 0, 255), -1) # -1を指定して塗りつぶす
+    cv2.drawContours(image1_with_diff, contours, -1, (0, 0, 255), -1)
 
     # 結果を表示
     plt.imshow(cv2.cvtColor(image1_with_diff, cv2.COLOR_BGR2RGB))

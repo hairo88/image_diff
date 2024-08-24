@@ -1,76 +1,58 @@
-import numpy as np
 import cv2
-from matplotlib import pyplot as plt
-from utlis.show_image import show_1Img, show_2Img
-from utlis.clahe import apply_clahe_and_plot
-from ni import nitika_image
+import numpy as np
 
-def tirm_image(img, trim_per=10):
-    hei, wid = img.shape[:2]
-    trim_hei = int(hei * trim_per / 100)
-    trim_wid = int(wid * trim_per / 100)
-    trimmed_img = img[trim_hei: hei - trim_hei, trim_wid:wid - trim_wid]
-    return trimmed_img
+def local_feature_matching(img1, img2, grid_size=(2, 2)):
+    # SIFT特徴量抽出器の初期化
+    sift = cv2.SIFT_create()
 
-# --- 設定 ---
-image_path1 = r'img/image4.png'
-image_path2 = r'img/image3.png'
-block_size = 100
-MIN_MATCH_COUNT = 5
+    # 画像をグリッドに分割
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+    cell_h1, cell_w1 = h1 // grid_size[0], w1 // grid_size[1]
+    cell_h2, cell_w2 = h2 // grid_size[0], w2 // grid_size[1]
 
-# --- 関数：特徴量マッチングと差分画像生成 ---
-def detect_and_diff(image1, image2, akaze):
-    h, w, _ = image1.shape
-    difference = np.zeros_like(image1)
-    for y in range(0, h, block_size):
-        for x in range(0, w, block_size):
-            block_h = min(block_size, h - y)
-            block_w = min(block_size, w - x)
-            block1 = image1[y:y + block_h, x:x + block_w]
-            block2 = image2[y:y + block_h, x:x + block_w]
+    all_matches = []
+    all_kp1 = []
+    all_kp2 = []
 
-            kp1, des1 = akaze.detectAndCompute(block1, None)
-            kp2, des2 = akaze.detectAndCompute(block2, None)
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            # 各グリッドセルの領域を定義
+            roi1 = img1[i*cell_h1:(i+1)*cell_h1, j*cell_w1:(j+1)*cell_w1]
+            roi2 = img2[i*cell_h2:(i+1)*cell_h2, j*cell_w2:(j+1)*cell_w2]
 
-            if des1 is not None and des2 is not None:
-                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-                matches = bf.match(des1, des2)
-                matches = sorted(matches, key=lambda x: x.distance)
-                good_matches = matches[:10]
+            # 各領域で特徴点と特徴量を抽出
+            kp1, des1 = sift.detectAndCompute(roi1, None)
+            kp2, des2 = sift.detectAndCompute(roi2, None)
 
-                if len(good_matches) >= MIN_MATCH_COUNT:
-                    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-                    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-                    M, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 5.0)
-                    image2_aligned = cv2.warpPerspective(block2, M, (block_w, block_h))
-                    diff_block = cv2.absdiff(block1, image2_aligned)
-                    diff_block = cv2.cvtColor(diff_block, cv2.COLOR_BGR2GRAY)
-                    ret, diff_block = cv2.threshold(diff_block, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                    kernel = np.ones((5, 5), np.uint8)
-                    diff_block = cv2.erode(diff_block, kernel, iterations=1)
-                    diff_block = cv2.dilate(diff_block, kernel, iterations=1)
-                    diff_block = cv2.cvtColor(diff_block, cv2.COLOR_GRAY2BGR)
-                    difference[y:y + block_h, x:x + block_w] = diff_block
-                else :
-                    print('good no')
-    return difference
+            # 特徴量マッチング
+            bf = cv2.BFMatcher()
+            matches = bf.knnMatch(des1, des2, k=2)
 
-# --- メイン処理 ---
+            # Lowe's ratio testを適用
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.75 * n.distance:
+                    good_matches.append(m)
 
-# 画像を読み込む
-image1 = cv2.imread(image_path1)
-image2 = cv2.imread(image_path2)
+            # マッチング結果を全体のリストに追加
+            all_matches.extend(good_matches)
+            all_kp1.extend(kp1)
+            all_kp2.extend(kp2)
 
-# 元の AKAZE パラメータ
-akaze_default = cv2.AKAZE_create()
-difference_default = detect_and_diff(image1.copy(), image2.copy(), akaze_default)
-cv2.imwrite("difference_default.png", difference_default)
+    # マッチング結果の描画 (ループの外側で実行)
+    img_matches = cv2.drawMatches(img1, all_kp1, img2, all_kp2, all_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-# 調整後の AKAZE パラメータ
-akaze_tuned = cv2.AKAZE_create(threshold=0.0001, nOctaves=5, nOctaveLayers=4)
-difference_tuned = detect_and_diff(image1.copy(), image2.copy(), akaze_tuned)
-cv2.imwrite("difference_tuned.png", difference_tuned)
+    return all_matches, img_matches
 
-# 結果表示 (コメントアウトを外して使用)
-show_1Img(difference_default, "Default AKAZE")
-show_1Img(difference_tuned, "Tuned AKAZE")
+# 画像の読み込み
+img1 = cv2.imread('img/image4.png', cv2.IMREAD_GRAYSCALE)
+img2 = cv2.imread('img/image3.png', cv2.IMREAD_GRAYSCALE)
+
+# 局所領域でのマッチング実行
+matches, img_matches = local_feature_matching(img1, img2)
+
+# 結果の表示
+cv2.imshow('Matches', img_matches)
+cv2.waitKey(0)
+cv2.destroyAllWindows()

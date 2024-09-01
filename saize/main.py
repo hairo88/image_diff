@@ -32,39 +32,40 @@ image1_clahe, image2_clahe = apply_clahe_and_plot(gray1, gray2)
 
 
 # ノイズ除去
-filtered_image1 = cv2.bilateralFilter(image1_clahe, 9, 75, 75)
-filtered_image2 = cv2.bilateralFilter(image2_clahe, 9, 75, 75)
+# filtered_image1 = cv2.bilateralFilter(image1_clahe, 9, 75, 75)
+# filtered_image2 = cv2.bilateralFilter(image2_clahe, 9, 75, 75)
 
 
-# 二値化
-ret_1, image1_binary = cv2.threshold(filtered_image1, 73, 255, cv2.THRESH_BINARY)
-ret_2, image2_binary = cv2.threshold(filtered_image2, 73, 255, cv2.THRESH_BINARY)
+# # 二値化
+# ret_1, image1_binary = cv2.threshold(filtered_image1, 73, 255, cv2.THRESH_BINARY)
+# ret_2, image2_binary = cv2.threshold(filtered_image2, 73, 255, cv2.THRESH_BINARY)
 
-# show_2Img(image1_binary, image2_binary, 'binary')
+# # show_2Img(image1_binary, image2_binary, 'binary')
 
  
-# エッジ検出 
-# 二値化した画像を使わずにエッジする
-img_contour_only_1 = sobel_image(filtered_image1)
-img_contour_only_2 = sobel_image(filtered_image2)
+# # エッジ検出 
+# # 二値化した画像を使わずにエッジする
+# img_contour_only_1 = sobel_image(filtered_image1)
+# img_contour_only_2 = sobel_image(filtered_image2)
 
-show_2Img(img_contour_only_1, img_contour_only_2, 'conttour')
+# show_2Img(img_contour_only_1, img_contour_only_2, 'conttour')
 
 
-#モルフォロジー演算
-kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+# #モルフォロジー演算
+# kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
-kernel_2 = np.ones((5,5), np.uint8)
+# kernel_2 = np.ones((5,5), np.uint8)
+# image1_mor = cv2.erode(img_contour_only_1, kernel_2, iterations =3)
 
-image1_mor = cv2.morphologyEx(img_contour_only_1, cv2.MORPH_OPEN, kernel)
-image2_mor = cv2.morphologyEx(img_contour_only_2, cv2.MORPH_OPEN, kernel)
+# image1_mor = cv2.morphologyEx(img_contour_only_1, cv2.MORPH_OPEN, kernel)
+# image2_mor = cv2.morphologyEx(img_contour_only_2, cv2.MORPH_OPEN, kernel)
 
-show_2Img(image1_mor, image2_mor, 'mor')
+# show_2Img(image1_mor, image2_mor, 'mor')
 
 # akaze検出器
 akaze = cv2.AKAZE_create()
-keypoints1, descriptors1 = akaze.detectAndCompute(image1_mor, None)
-keypoints2, descriptors2 = akaze.detectAndCompute(image2_mor, None)
+keypoints1, descriptors1 = akaze.detectAndCompute(image1_clahe, None)
+keypoints2, descriptors2 = akaze.detectAndCompute(image2_clahe, None)
 
 #透視変換(image2)
 
@@ -77,7 +78,7 @@ matches = bf.match(descriptors1, descriptors2)
 matches = sorted(matches, key=lambda x: x.distance)
 
 #マッチしたもの中から上位を参考にする
-good = matches[:int(len(matches) * 0.50)]
+good = matches[:int(len(matches) * 0.70)]
 
 #対応が取れた特徴点の座標を取り出す
 src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good]).reshape(-1,1,2)
@@ -85,10 +86,10 @@ dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good]).reshape(-1,1,2)
 # findhomegraphy:二つの画像からえられた点の集合からその物体の投射変換を計算する
 M, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 5.0)
 #iamge2を透視変換する
-image2_transform = cv2.warpPerspective(img_contour_only_2, M, (w_min, h_min))
+image2_transform = cv2.warpPerspective(image2_clahe, M, (w_min, h_min))
 
 #マッチを描画する
-matched_image = cv2.drawMatches(img_contour_only_1, keypoints1, image2_transform, keypoints2, matches[:int(len(matches) * 0.50)], None, flags=2)
+matched_image = cv2.drawMatches(image1_clahe, keypoints1, image2_transform, keypoints2, matches[:int(len(matches) * 0.50)], None, flags=2)
 
 show_1Img(matched_image)
 
@@ -100,7 +101,7 @@ show_1Img(matched_image)
 block_size = 100  # 小さな領域のサイズ
 
 # 差分を格納する画像を作成する
-difference = np.zeros_like(img_contour_only_1)
+difference = np.zeros_like(image1_clahe)
 
 # 小領域ごとに差分を計算
 for y in range(0, h_min, block_size):
@@ -109,7 +110,7 @@ for y in range(0, h_min, block_size):
         block_h = min(block_size, h_min - y)
         block_w = min(block_size, w_min - x)
 
-        block1 = img_contour_only_1[y:y+block_h, x:x+block_w]
+        block1 = image1_clahe[y:y+block_h, x:x+block_w]
         block2 = image2_transform[y:y+block_h, x:x+block_w]
 
         # 差分計算

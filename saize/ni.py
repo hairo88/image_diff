@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 from utlis.clahe import apply_clahe_and_plot
 
@@ -14,10 +15,10 @@ def nitika_image(img3):
     # トラックバーの初期設定
     global threshold  # グローバル変数を使用
     threshold = 100
-    cv2.createTrackbar("track", "Thresholding", threshold, 255, onTrackbar)
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-    image_clahe = clahe.apply(img3)
-    filter_image = cv2.bilateralFilter(image_clahe, 9, 75, 75)
+    # cv2.createTrackbar("track", "Thresholding", threshold, 255, onTrackbar)
+    # clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+    # image_clahe = clahe.apply(img3)
+    # filter_image = cv2.bilateralFilter(image_clahe, 9, 75, 75)
 
     while True:
 
@@ -49,5 +50,26 @@ def nitika_image(img3):
 
     cv2.destroyAllWindows()
 
-img_3 = cv2.imread(r'img/image3.png', 0)  # グレースケールで読み込み
-nitika_image(img_3)
+def show_niti(img3):
+    # しきい値処理
+    ret, img_th_simple = cv2.threshold(img3, 40, 255, cv2.THRESH_BINARY)
+    _, img_th_mean = cv2.threshold(img3, 80, 60, cv2.THRESH_BINARY)
+    _, img_th_gaussian = cv2.threshold(img3, 120, 255, cv2.THRESH_BINARY)
+
+    # 画像を4つ並べるための空の配列を作成
+    height, width = img3.shape
+    combined_image = np.zeros((height, width * 4), dtype=np.uint8)
+
+    # 各画像を配置
+    combined_image[:, :width] = img3                # 元の画像
+    combined_image[:, width:width*2] = img_th_simple  # 簡易二値化
+    combined_image[:, width*2:width*3] = img_th_mean   # 平均二値化
+    combined_image[:, width*3:] = img_th_gaussian       # ガウシアン二値化
+
+    # matplotlibを使用して表示
+    plt.imshow(combined_image, cmap='gray')
+    plt.axis('off')  # 軸を非表示
+    plt.show()
+
+image1 = cv2.imread(r'img/image4.png', 0)
+show_niti(image1)
